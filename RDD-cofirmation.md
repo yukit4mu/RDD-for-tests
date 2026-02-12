@@ -1,316 +1,308 @@
-# 要件定義書（Laravel / バックエンド実装用）
-- プロジェクト名：お問い合わせ管理システム
----
-## 1. 概要
-### 1.1 目的
-- 本書は、Laravelでバックエンドを実装するために必要な仕様を定義する（フロントはBlade実装済み）。
-- 実務に近いWebアプリケーション開発の一連の流れを体験し、自走できるエンジニアになるための基礎体力を養うことを目的とした確認テストのバックエンド要件を明確化する。
+• 画面定義
+  | 画面ID | 画面名称 | パス | 備考 |
+  | --- | --- | --- | --- |
+  | SCR01 | お問い合わせフォーム | GET / | 公開トップ画面。二段構成フォームと入力欄（氏名・性別・メール・電話・住所・建物名・カテゴリ・タグ・内容）を表示し、カテゴリ／タグ候補はAPIから動的取得する。routes/
+  web.php:18 resources/views/contact/index.blade.php:4 resources/js/contact/category-select-loader.js:7 resources/js/contact/tag-select-loader.js:7 |
+  | SCR02 | 入力内容確認／送信ボックス | GET /（同画面内切替） | 「確認画面」ボタンでJSがローカルバリデーション後に確認レイアウトへ切り替え、再編集や送信を制御する。resources/js/contact/index.js:233 |
+  | SCR03 | お問い合わせ完了 | GET /thanks | 送信完了メッセージとHOMEリンクのみを表示。routes/web.php:21 resources/views/contact/thanks.blade.php:12 |
+  | SCR04 | 管理画面 | GET /admin | 認証必須。検索条件フォーム、結果テーブル、ページネーション、CSVエクスポートボタン、詳細モーダル、タグ管理セクションで構成。routes/web.php:25 resources/views/admin/
+  index.blade.php:17 |
+  | SCR05 | 管理者ログイン | GET /login | Fortifyが提供するログインビュー。メール・パスワード入力と送信のみ。app/Providers/FortifyServiceProvider.php:38 resources/views/auth/login.blade.php:4 |
+  | SCR06 | 管理者登録 | GET /register | Fortifyが提供する登録ビュー。氏名・メール・パスワードを登録。app/Providers/FortifyServiceProvider.php:44 resources/views/auth/register.blade.php:4 |
 
-### 1.2 前提・制約
-- フレームワーク：Laravel 10.x
-- フロント：Bladeは実装完了済みであり、本要件定義の対象外とする。
-- 実装範囲：バックエンド（ルーティング、認証/認可、DB、ビジネスロジック、API等）
+  機能要件
+  | EPIC名 | 機能ID | 機能名 | 概要 | 入力条件/制約 | 出力条件/期待結果 | 実装要件 | 基本/応用 |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | お問い合わせ受付（ユーザー向け） | WF01 | フォーム表示・初期入力 | 認証不要のトップでフォームとトークンを描画し、種別／タグの候補はAPIで遅延ロードする。 | URL: GET /; 認証: 不要。 | contact.indexビュー
+  が描画され、カテゴリ／タグ選択が空で配置される。 | ContactController@index が contact.index を返却し（app/Http/Controllers/ContactController.php:10）、Bladeが全入力欄とCSRFを用意（resources/views/contact/
+  _form.blade.php:1）。JSが電話結合や候補取得を初期化（resources/js/contact/index.js:13、resources/js/contact/category-select-loader.js:7、resources/js/contact/tag-select-loader.js:7）。 | 基本 |
+  | お問い合わせ受付（ユーザー向け） | WF02 | 入力内容確認 | 「確認画面」押下時にブラウザ側で必須・形式・文字数を検証し、確認セクションに値を整形表示する。 | すべての必須項目が入力済／電話は10〜11桁数字、内
+  容は120文字以内。 | 入力値が確認セクションに表示され、タグ名・カテゴリ名が名称付きで反映、修正ボタンで入力欄へ戻れる。 | JSがサーバールールに揃えたバリデーションを実施し（resources/js/contact/index.js:21、
+  resources/js/validation-messages.js:6）、カテゴリ／タグ名称をAPIから補完して確認欄へ埋め込む（resources/js/contact/index.js:285）。 | 基本 |
+  | お問い合わせ受付（ユーザー向け） | WF03 | お問い合わせ送信 | 確認画面の送信でAPIへJSONをPOSTし、DBに保存・タグ紐付け後Thanksへ遷移する。 | URL: POST /api/contacts; 認証: 不要; 必須項目は
+  StoreContactRequest に従う（氏名/性別1-3/メール形式/電話10-11桁/住所/カテゴリ存在/内容<=120、タグIDは存在確認）。app/Http/Requests/StoreContactRequest.php:22 | 201 Createdが返り、Thanks画面へ遷移。サーババリ
+  デーションエラーはアラートで表示。 | ルート/コントローラ/モデル構成（routes/api.php:25、app/Http/Controllers/Api/ContactController.php:44、app/Models/Contact.php:18、app/Models/Tag.php:17）。保存後タグを中間
+  テーブルへattach（app/Http/Controllers/Api/ContactController.php:50）。フロントは送信中UI制御とThanksへのリダイレクトを行う（resources/js/contact/index.js:375）。 | 基本 |
+  | お問い合わせ受付（ユーザー向け） | WF04 | 完了画面表示 | 送信成功後にThanksビューを表示し、HOMEへの導線だけ提供。 | URL: GET /thanks; 認証: 不要。 | サンクスメッセージとHOMEリンクのみ表示。 |
+  ContactController@thanks がビュー返却（app/Http/Controllers/ContactController.php:15）、Bladeで装飾（resources/views/contact/thanks.blade.php:12）。 | 基本 |
+  | 問い合わせ運用（管理者向け） | AF01 | 問い合わせ検索・一覧 | 認証済みユーザーが管理画面で条件を指定すると、APIから7件/頁で結果を取得しテーブルへ描画。 | URL: GET /admin + query; 認証: 必須。条件はキー
+  ワード255字以下、gender=0/1/2/3、category存在、date=日付形式（app/Http/Requests/IndexContactRequest.php:22）。 | テーブル・ページネーション・検索状態が同期し、ContactResource準拠のJSONが描画。 | 画面/JS/
+  ルート/コントローラ/リソース構成（resources/views/admin/index.blade.php:17、resources/js/admin/index.js:13、resources/js/admin/contact-list-renderer.js:38、routes/web.php:25、routes/api.php:23、app/Http/
+  Controllers/Api/ContactController.php:14、app/Http/Resources/ContactResource.php:13）。 | 基本 |
+  | 問い合わせ運用（管理者向け） | AF02 | 詳細参照＆削除 | 任意行の「詳細」ボタンでモーダルを開き、APIから詳細を取得。削除もモーダルから実行。 | 入力: contact_id（整数）。削除時は確認ダイアログ必須。 | モー
+  ダルに全項目とタグバッジを表示。DELETE成功でモーダル閉鎖と再読み込み。 | JSが詳細取得とモーダル描画/削除処理を担当（resources/js/admin/contact-detail-modal.js:25）。API show/destroyは同一コントローラで提供
+  （routes/api.php:27、app/Http/Controllers/Api/ContactController.php:59、app/Http/Controllers/Api/ContactController.php:64）。 | 基本 |
+  | 問い合わせ運用（管理者向け） | AF03 | CSVエクスポート | 管理画面の検索条件を保ったままCSVダウンロードを実行。BOM付きUTF-8でExcel互換。 | URL: GET /contacts/export + query; 認証: 必須; 入力ルールは
+  ExportContactRequest に準拠（app/Http/Requests/ExportContactRequest.php:22）。 | CSVにID/氏名/性別文言/メール/電話/住所/建物/カテゴリ/内容/作成日時を含める。 | ルートとコントローラがauth配下で定義（routes/
+  web.php:24、app/Http/Controllers/ContactController.php:20）。streamDownloadでBOMを書き出し、カテゴリ名結合を行う（app/Http/Controllers/ContactController.php:47）。 | 応用 |
+  | 問い合わせ運用（管理者向け） | AF04 | タグマスタ管理 | 管理画面下部でタグ一覧表示・登録・編集・削除を提供し、フォームのタグ候補に即時反映。 | 入力: name必須/<=50/ユニーク、編集時に自身IDを除外。 | 成
+  功時はAPIレスポンスを再取得してリスト更新。エラーはフォーム下に表示。 | 画面フォーム/JS/API/バリデーション実装（resources/views/admin/index.blade.php:96、resources/js/admin/tag-management.js:71、routes/
+  api.php:32、app/Http/Controllers/Api/TagController.php:11、app/Http/Requests/StoreTagRequest.php:14、app/Http/Requests/UpdateTagRequest.php:15）。 | 応用 |
+  | 管理ユーザー認証・アカウント管理 | AU01 | 管理ユーザー登録 | Fortifyが提供する登録画面とCreateNewUserアクションで管理ユーザーを追加。 | URL: GET/POST /register; 入力：氏名必須/<=255、メール形式＆ユニー
+  ク、パスワードはFortify標準ルール＋確認一致（app/Actions/Fortify/CreateNewUser.php:21）。 | 登録成功でユーザー作成、ハッシュ化パスワード保存、ログイン状態でhomeに遷移。 | Fortify設定＆ビュー（app/Providers/
+  FortifyServiceProvider.php:32、config/fortify.php:146、resources/views/auth/register.blade.php:4）。 | 基本 |
+  | 管理ユーザー認証・アカウント管理 | AU02 | ログイン/ログアウトと保護 | Fortifyログインでセッションを確立し、authミドルウェアで管理画面とCSVを保護。 | URL: GET/POST /login, POST /logout; Rate limit 5回/
+  分/メール＋IP（app/Providers/FortifyServiceProvider.php:48）。 | 認証成功で /admin へ（config/fortify.php:76）。ログアウトでセッション破棄しログイン画面に戻る。 | Fortifyログインビュー/設定（app/Providers/
+  FortifyServiceProvider.php:38、resources/views/auth/login.blade.php:4）とwebルートauthグループ（routes/web.php:24）。 | 基本 |
+  | 管理ユーザー認証・アカウント管理 | AU03 | パスワード再設定 | Fortifyのパスワードリセット機能でトークンを発行し、新パスワードを保存。 | 入力：メールアドレス、トークン、Fortify標準パスワードルール。 | token
+  テーブル（password_reset_tokens）に記録し、再設定でユーザーパスワードをハッシュ更新。 | Fortify features設定、ResetUserPassword アクション、トークンテーブル（config/fortify.php:146、app/Actions/Fortify/
+  ResetUserPassword.php:15、database/migrations/2014_10_12_100000_create_password_reset_tokens_table.php:12）。 | 基本 |
+  | 管理ユーザー認証・アカウント管理 | AU04 | プロフィール／パスワード更新 | マイプロフィールで氏名・メール・パスワード変更を支援し、メール変更時は検証をリセット。 | 入力：認証済ユーザー／現行パスワード必
+  須。 | usersテーブルのname/email/passwordが更新。 | FortifyのUpdateUserProfileInformation/UpdateUserPasswordアクションで実装（app/Actions/Fortify/UpdateUserProfileInformation.php:17、app/Actions/Fortify/
+  UpdateUserPassword.php:20）。 | 応用 |
+  | 管理ユーザー認証・アカウント管理 | AU05 | 二要素認証 | Fortify twoFactor機能で秘密鍵やリカバリコードを管理し、必要に応じてログイン時に2FAチャレンジへ誘導。 | 入力：2FA有効化操作、TOTPコード。
+  | usersテーブルにtwo_factor系カラムを保持し、認証済みユーザーのみhomeへリダイレクト。 | Fortify featuresと2FAカラム（config/fortify.php:146、app/Providers/FortifyServiceProvider.php:36、database/
+  migrations/2014_10_12_200000_add_two_factor_columns_to_users_table.php:14）。 | 応用 |
 
-### 1.3 スコープ（対象 / 非対象）
-- **対象**：
-  - データベースの設計と構築（マイグレーション、シーディング）
-  - ユーザー向け機能（お問い合わせフォームの処理）のバックエンド実装
-  - 管理者向け機能（認証、お問い合わせ管理）のバックエンド実装
-  - 応用機能（タグ管理、CSVエクスポート）のバックエンド実装
-  - 上記機能を実現するためのAPI（Web, JSON）実装
-- **非対象**：
-  - BladeテンプレートのUI実装・修正
-  - サーバーインフラの構築（Docker/Sail環境のセットアップ手順は「2. 環境構築」に記載）
+  API仕様書
 
----
-## 2. 環境構築（必須）
-### 2.1 動作要件
-| コンポーネント | 技術/ツール | バージョン/種類 |
-| :--- | :--- | :--- |
-| OS | （Dockerが動作する任意のOS） | - |
-| PHP | PHP | `8.2` |
-| Laravel | Laravel | `10.x` |
-| DB | MySQL | - |
-| Webサーバー | Nginx | - |
-| フロントエンド | Vite, Tailwind CSS | `^3.4.0` |
-| 開発ツール | Docker, Laravel Sail, phpMyAdmin | - |
+  API01: カテゴリー一覧取得
+  概要: フォーム用カテゴリ候補を全件取得。routes/api.php:19 app/Http/Controllers/Api/CategoryController.php:11
+  エンドポイント: GET /api/categories
+  メソッド: GET
+  認証: 不要（公開API）
+  認可: -
+  説明: CategoryResource の配列を返却。
+  リクエストパラメータ: なし
+  レスポンス:
 
-### 2.2 セットアップ手順
-1. リポジトリ取得： `git clone` でリポジトリをクローン
-2. 依存インストール：`composer install`
-3. env作成：`.env.example` をコピーして `.env` を作成し、`php artisan key:generate` を実行
-4. DB作成：Laravel Sail環境下で自動的に作成
-5. migrate/seed：`php artisan migrate --seed` を実行
-6. 起動：`./vendor/bin/sail up -d`
-7. Queue（必要なら）：本プロジェクトでは使用しない
+  - 200 OK
 
-### 2.3 環境変数（最低限）
-| Key | 必須 | 用途/意味 | 例 |
-|---|---:|---|---|
-| APP_NAME | ✅ | アプリケーション名 | Laravel |
-| APP_ENV | ✅ | 実行環境 | local |
-| APP_KEY | ✅ | アプリケーション暗号化キー | `base64:...` |
-| APP_DEBUG | ✅ | デバッグモード | true |
-| APP_URL | ✅ | アプリケーションURL | http://localhost |
-| DB_CONNECTION | ✅ | DB接続ドライバ | mysql |
-| DB_HOST | ✅ | DBホスト | mysql |
-| DB_PORT | ✅ | DBポート | 3306 |
-| DB_DATABASE | ✅ | DB名 | `contact_form_app` |
-| DB_USERNAME | ✅ | DBユーザー名 | `sail` |
-| DB_PASSWORD | ✅ | DBパスワード | `password` |
+  { "data": [ { "id": 1, "content": "商品のお届けについて" } ] }
 
----
-## 3. 機能一覧
-### 基本機能
-| No | 機能名 | 詳細 |
-|---|---|---|
-| 1 | お問い合わせフォーム | ユーザーが氏名、連絡先、お問い合わせ内容などを入力し、システムに送信する機能。 |
-| 2 | 認証 | 管理者がシステムにログイン・ログアウトするための機能。未認証ユーザーのアクセスを制限する。 |
-| 3 | 管理画面 | 管理者が登録されたお問い合わせを一覧で確認し、検索、詳細表示、削除を行う機能。 |
+  その他: コレクション形式。resources/js/contact/category-select-loader.js:7 で利用。
 
-### 応用機能
-| No | 機能名 | 詳細 |
-|---|---|---|
-| 4 | タグ管理 | 管理者がお問い合わせに付与する「タグ」を自由に作成、更新、削除できる機能。 |
-| 5 | CSVエクスポート | 管理者が検索条件で絞り込んだお問い合わせデータをCSVファイルとしてダウンロードできる機能。 |
+  API02: お問い合わせ一覧取得
+  概要: 管理画面用に検索/ページネーション付きで問い合わせ一覧を取得。routes/api.php:23 app/Http/Controllers/Api/ContactController.php:14
+  エンドポイント: GET /api/contacts
+  メソッド: GET
+  認証: 不要（現状フロントJSのみから呼び出し・要件化する際はauth追加想定）
+  認可: -
+  説明: ContactResource コレクションを7件/頁で返し、meta にページ情報を含む。
+  リクエストパラメータ:
 
----
-## 4. データ設計（DB）
-### 4.1 ER図（簡易）
-```mermaid
-erDiagram
-    users ||--o{ contacts : "管理"
-    categories ||--o{ contacts : "分類"
-    contacts }o--o{ tags : "紐付け"
-    
-    users {
-        bigint id PK
-        string name
-        string email UK
-        string password
-        timestamp created_at
-        timestamp updated_at
-    }
-    
-    categories {
-        bigint id PK
-        string content
-        timestamp created_at
-        timestamp updated_at
-    }
-    
-    contacts {
-        bigint id PK
-        bigint category_id FK
-        string first_name
-        string last_name
-        tinyint gender
-        string email
-        string tel
-        string address
-        string building
-        string detail
-        timestamp created_at
-        timestamp updated_at
-    }
-    
-    tags {
-        bigint id PK
-        string name UK
-        timestamp created_at
-        timestamp updated_at
-    }
-    
-    contact_tag {
-        bigint id PK
-        bigint contact_id FK
-        bigint tag_id FK
-        timestamp created_at
-        timestamp updated_at
-    }
-```
+  - keyword string 任意／max:255（部分一致。氏名・メールを対象）
+  - gender integer 任意／in:0,1,2,3（0は全件）
+  - category_id integer 任意／categories.id が存在
+  - date string 任意／日付形式（YYYY-MM-DD）
+  - page integer 任意／1以上（Laravelのページネータパラメータ）
+    レスポンス:
+  - 200 OK
 
-### 4.2 テーブル定義
-#### `users` テーブル
-- **マイグレーション**: Laravel標準の `create_users_table` を利用。
-- **役割**: 管理者アカウント情報を格納する。
+  {
+    "data": [
+      {
+        "id": 12,
+        "category": { "id": 3, "content": "商品トラブル" },
+        "tags": [ { "id": 1, "name": "質問" } ],
+        "first_name": "山田",
+        "last_name": "太郎",
+        "gender": 1,
+        "email": "example@example.com",
+        "tel": "0312345678",
+        "address": "東京都...",
+        "building": "サンプルビル",
+        "detail": "..."
+      }
+    ],
+    "meta": { "current_page": 1, "per_page": 7, "total": 20 }
+  }
 
-#### `categories` テーブル
-- **マイグレーション**: `create_categories_table`
-- **役割**: お問い合わせの種類を管理するマスターテーブル。
-- **スキーマ**:
-  - `id()`: 主キー
-  - `string('content', 255)`: カテゴリ名
-  - `timestamps()`: 作成日時、更新日時
+  その他: バリデーションは IndexContactRequest（app/Http/Requests/IndexContactRequest.php:22）。
 
-#### `contacts` テーブル
-- **マイグレーション**: `create_contacts_table`
-- **役割**: ユーザーからのお問い合わせ情報を格納するメインテーブル。
-- **スキーマ**:
-  - `id()`: 主キー
-  - `foreignId('category_id')->constrained('categories')->onDelete('cascade')`: 外部キー
-  - `string('first_name', 255)`: 姓
-  - `string('last_name', 255)`: 名
-  - `tinyInteger('gender')`: 性別 (1:男性, 2:女性, 3:その他)
-  - `string('email', 255)`: メールアドレス
-  - `string('tel', 11)`: 電話番号（ハイフンなし10〜11桁）
-  - `string('address', 255)`: 住所
-  - `string('building', 255)->nullable()`: 建物名
-  - `string('detail', 120)`: お問い合わせ内容
-  - `timestamps()`: 作成日時、更新日時
+  API03: お問い合わせ登録
+  概要: フォーム入力を新規登録し、タグを中間テーブルに紐付ける。routes/api.php:25 app/Http/Controllers/Api/ContactController.php:44
+  エンドポイント: POST /api/contacts
+  メソッド: POST
+  認証: 不要
+  認可: -
+  説明: StoreContactRequest で検証後 contacts と contact_tag を作成。
+  リクエストパラメータ（JSON Body）:
 
-#### `tags` テーブル
-- **マイグレーション**: `create_tags_table`
-- **役割**: お問い合わせに付与するタグを管理するマスターテーブル。
-- **スキーマ**:
-  - `id()`: 主キー
-  - `string('name', 50)->unique()`: タグ名
-  - `timestamps()`: 作成日時、更新日時
+  - first_name string 必須／max:255
+  - last_name string 必須／max:255
+  - gender integer 必須／in:1,2,3
+  - email string 必須／メール形式／max:255
+  - tel string 必須／正規表現 ^[0-9]{10,11}$
+  - address string 必須／max:255
+  - building string 任意／max:255
+  - category_id integer 必須／categories.id 存在
+  - detail string 必須／max:120
+  - tag_ids array 任意／要素はinteger exists:tags,id
+    レスポンス:
+  - 201 Created （ボディなし）
+  - 422 Validation Error（errors 包含）
+    その他: 成功後フロントが /thanks へ遷移（resources/js/contact/index.js:404）。
 
-#### `contact_tag` テーブル
-- **マイグレーション**: `create_contact_tag_table`
-- **役割**: `contacts`と`tags`の多対多リレーションを定義する中間テーブル。
-- **スキーマ**:
-  - `id()`: 主キー
-  - `foreignId('contact_id')->constrained()->onDelete('cascade')`: 外部キー
-  - `foreignId('tag_id')->constrained()->onDelete('cascade')`: 外部キー
-  - `timestamps()`: 作成日時、更新日時
+  API04: お問い合わせ詳細取得
+  概要: 単一問い合わせをカテゴリ・タグ付きで返却。routes/api.php:27 app/Http/Controllers/Api/ContactController.php:59
+  エンドポイント: GET /api/contacts/{contact}
+  メソッド: GET
+  認証: 不要
+  認可: -
+  説明: 指定IDの ContactResource を返し、category と tags を eager load。
+  リクエストパラメータ: contact path integer（存在するID）
+  レスポンス: 200 OK + ContactResource
+  その他: 管理モーダルが利用（resources/js/admin/contact-detail-modal.js:77）。
 
-### 4.3 モデル定義
-#### `Category` モデル
-- `protected $fillable = ['content'];`
-- `contacts()`: `hasMany(Contact::class)`
+  API05: お問い合わせ削除
+  概要: 問い合わせ1件を削除し、中間テーブルもcascade。routes/api.php:29 app/Http/Controllers/Api/ContactController.php:64
+  エンドポイント: DELETE /api/contacts/{contact}
+  メソッド: DELETE
+  認証: 不要
+  認可: -
+  レスポンス: 204 No Content（成功）
+  その他: フロントはconfirm後に呼び出し（resources/js/admin/contact-detail-modal.js:67）。
 
-#### `Contact` モデル
-- `protected $fillable = ['category_id', 'first_name', ...];` (全カラム)
-- `category()`: `belongsTo(Category::class)`
-- `tags()`: `belongsToMany(Tag::class)`
+  API06: タグ一覧取得
+  概要: タグマスタを全件取得。routes/api.php:32 app/Http/Controllers/Api/TagController.php:11
+  エンドポイント: GET /api/tags
+  メソッド: GET
+  認証: 不要
+  認可: -
+  レスポンス: 200 OK
 
-#### `Tag` モデル
-- `protected $fillable = ['name'];`
-- `contacts()`: `belongsToMany(Contact::class)`
+  { "data": [ { "id": 1, "name": "質問" } ] }
 
-#### `User` モデル
-- Laravel標準のモデルを利用。
+  その他: フォーム・管理画面双方で使用（resources/js/contact/tag-select-loader.js:7、resources/js/admin/tag-management.js:77）。
 
----
-## 5. 初期データ（シーディング）
-#### `UserSeeder`
-- `User::create` を使用し、以下のテストユーザーを1件作成する。
-  - `name`: 'Test User'
-  - `email`: 'test@example.com'
-  - `password`: `Hash::make('password')`
+  API07: タグ登録
+  概要: 新規タグを登録。routes/api.php:34 app/Http/Controllers/Api/TagController.php:17
+  エンドポイント: POST /api/tags
+  メソッド: POST
+  認証: 不要
+  認可: -
+  リクエスト: name string 必須／max:50／ユニーク（app/Http/Requests/StoreTagRequest.php:14）
+  レスポンス: 201 Created（ボディなし）
+  その他: 422でメッセージ返却、画面はerrorBoxに表示。
 
-#### `CategorySeeder`
-- `Category::create` を使用し、以下の5件のカテゴリを登録する。
-  - '商品のお届けについて', '商品の交換について', '商品トラブル', 'ショップへのお問い合わせ', 'その他'
+  API08: タグ更新
+  概要: 既存タグの名称を更新。routes/api.php:36 app/Http/Controllers/Api/TagController.php:21
+  エンドポイント: PUT /api/tags/{tag}
+  メソッド: PUT
+  認証: 不要
+  認可: -
+  リクエスト: name string 必須／max:50／ユニーク（指定ID除外）。app/Http/Requests/UpdateTagRequest.php:15
+  レスポンス: 204 No Content
+  その他: 編集対象はJSが管理（resources/js/admin/tag-management.js:131）。
 
-#### `ContactSeeder`
-- `Faker::create('ja_JP')` を利用して、リアルなダミーデータを20件作成する。
-- `Category::all()->random()->id` でランダムなカテゴリIDを割り当てる。
-- `tel` は `$faker->numerify('###########')` で11桁の数字を生成する。
-- `building` は `$faker->optional()->secondaryAddress` で確率的にNULLを許容する。
+  API09: タグ削除
+  概要: タグを削除し、pivotもcascade。routes/api.php:38 app/Http/Controllers/Api/TagController.php:27
+  エンドポイント: DELETE /api/tags/{tag}
+  メソッド: DELETE
+  レスポンス: 204 No Content
+  その他: 使用中タグ削除時もDBがcontact_tagをcascade削除。
 
-#### `DatabaseSeeder`
-- `run` メソッド内で `$this->call()` を使用し、`UserSeeder`, `CategorySeeder`, `ContactSeeder` の順で呼び出す。
+  API10: お問い合わせCSVエクスポート
+  概要: 管理画面から検索条件を指定してCSVをダウンロード。routes/web.php:27 app/Http/Controllers/ContactController.php:20
+  エンドポイント: GET /contacts/export
+  メソッド: GET
+  認証: 必須（auth middleware）
+  認可: -
+  リクエストパラメータ: keyword (string<=255), gender (0-3), category_id (exists), date (date) ― app/Http/Requests/ExportContactRequest.php:22
+  レスポンス:
 
----
-## 6. ルーティング
-### `routes/web.php`
-| Method | Path | Controller@Action | Middleware |
-|---|---|---|---|
-| GET | `/` | `ContactController@index` | - |
-| GET | `/thanks` | `ContactController@thanks` | - |
-| GET | `/admin` | `AdminController@index` | `auth` |
-| GET | `/contacts/export` | `ContactController@export` | `auth` |
+  - 200 OK + text/csv; ファイル名 contacts_YYYYMMDD_HHMMSS.csv
+  - 各行: id, 氏名, 性別名, email, tel, address, building, category, detail, created_at
+    その他: Excel互換のBOMを先頭出力（app/Http/Controllers/ContactController.php:47）。
 
-### `routes/api.php`
-| Method | Path | Controller@Action | Middleware |
-|---|---|---|---|
-| GET | `/categories` | `Api\CategoryController@index` | - |
-| GET | `/contacts` | `Api\ContactController@index` | - |
-| POST | `/contacts` | `Api\ContactController@store` | - |
-| GET | `/contacts/{contact}` | `Api\ContactController@show` | - |
-| DELETE | `/contacts/{contact}` | `Api\ContactController@destroy` | - |
-| GET | `/tags` | `Api\TagController@index` | - |
-| POST | `/tags` | `Api\TagController@store` | - |
-| PUT | `/tags/{tag}` | `Api\TagController@update` | - |
-| DELETE | `/tags/{tag}` | `Api\TagController@destroy` | - |
+  データ要件
+  | ID | データ名 | 説明 | 管理すべき情報 | 必須/応用 | 備考 |
+  | --- | --- | --- | --- | --- | --- |
+  | DR01 | お問い合わせ情報 | エンドユーザーから送信された問い合わせ内容。 | 氏名（姓・名）、性別（1:男性/2:女性/3:その他）、メール、電話（10〜11桁）、住所、建物名、カテゴリID、本文（120字）、作成日時。 | 必須
+  | テーブル/カラム仕様は database/migrations/2026_02_10_040043_create_contacts_table.php:14、モデルは app/Models/Contact.php:18。 |
+  | DR02 | カテゴリマスタ | 問い合わせ分類の固定値。 | content（255字以内）、種別ID。 | 必須 | Seederで5件投入（database/seeders/CategorySeeder.php:15）。 |
+  | DR03 | タグマスタ | 問い合わせに任意で付与するラベル。 | name（<=50文字ユニーク）。 | 応用 | CRUD APIと管理画面で維持（database/migrations/2026_02_10_042329_create_tags_table.php:14、resources/js/admin/
+  tag-management.js:71）。 |
+  | DR04 | お問い合わせ×タグ関連 | 多対多付与の保持。 | contact_id, tag_id, timestamp、組み合わせユニーク。 | 応用 | Pivot定義 database/migrations/2026_02_10_042338_create_contact_tag_table.php:14。 |
+  | DR05 | 管理ユーザー | 管理画面へアクセスできるアカウント。 | name, email(ユニーク), hashed password, remember_token, email_verified_at, 二要素関連。 | 必須 | Fortifyが使用。database/
+  migrations/2014_10_12_000000_create_users_table.php:14、2014_10_12_200000_add_two_factor_columns_to_users_table.php:14。初期ユーザーはSeeder（database/seeders/UserSeeder.php:13）。 |
+  | DR06 | 認証補助データ | パスワードリセット、APIトークン、ジョブ失敗記録。 | password_reset_tokens(email, token, created_at)、personal_access_tokens(多態)、failed_jobsログ。 | 応用 | 標準Laravel機能。
+  database/migrations/2014_10_12_100000_create_password_reset_tokens_table.php:12、2019_12_14_000001_create_personal_access_tokens_table.php:12、2019_08_19_000000_create_failed_jobs_table.php:12。 |
 
----
-## 7. バリデーション (FormRequest)
-#### `StoreContactRequest`
-- **rules()**:
-  - `first_name`, `last_name`, `address`: `required|string|max:255`
-  - `gender`: `required|integer|in:1,2,3`
-  - `email`: `required|string|email|max:255`
-  - `tel`: `required|string|regex:/^[0-9]{10,11}$/`
-  - `category_id`: `required|exists:categories,id`
-  - `detail`: `required|string|max:120`
-  - `tags`: `nullable|array`
-  - `tags.*`: `exists:tags,id`
-- **messages()**: 各ルールに対応する日本語のエラーメッセージを定義する。
+  テーブル仕様書
 
-#### `IndexContactRequest` (管理画面検索用)
-- **rules()**:
-  - `keyword`: `nullable|string|max:255`
-  - `gender`: `nullable|integer|in:0,1,2,3`
-  - `category_id`: `nullable|integer|exists:categories,id`
-  - `date`: `nullable|date`
+  usersテーブル
+  | No. | テーブル名 | カラム名 | 型 | PRIMARY KEY | NOT NULL | FOREIGN KEY | 補足 |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | 1 | users | id | bigint unsigned | :white_check_mark: | :white_check_mark: |  | 自動採番。database/migrations/2014_10_12_000000_create_users_table.php:14 |
+  | 2 | users | name | varchar(255) |  | :white_check_mark: |  | 管理者氏名 |
+  | 3 | users | email | varchar(255) unique |  | :white_check_mark: |  | ログインID |
+  | 4 | users | email_verified_at | timestamp |  |  |  | null許容 |
+  | 5 | users | password | varchar(255) |  | :white_check_mark: |  | ハッシュ保存 |
+  | 6 | users | two_factor_secret | text |  |  |  | 2FA秘密鍵。database/migrations/2014_10_12_200000_add_two_factor_columns_to_users_table.php:14 |
+  | 7 | users | two_factor_recovery_codes | text |  |  |  | 2FAリカバリコード |
+  | 8 | users | two_factor_confirmed_at | timestamp |  |  |  |  |
+  | 9 | users | remember_token | varchar(100) |  |  |  |  |
+  | 10 | users | created_at | timestamp |  |  |  | timestamps() |
+  | 11 | users | updated_at | timestamp |  |  |  |  |
 
-#### `ExportContactRequest` (CSVエクスポート用)
-- `IndexContactRequest` と同様のルールを定義する。
+  password_reset_tokensテーブル
+  | No. | テーブル名 | カラム名 | 型 | PRIMARY KEY | NOT NULL | FOREIGN KEY | 補足 |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | 1 | password_reset_tokens | email | varchar(255) | :white_check_mark: | :white_check_mark: |  | database/migrations/2014_10_12_100000_create_password_reset_tokens_table.php:12 |
+  | 2 | password_reset_tokens | token | varchar(255) |  | :white_check_mark: |  |  |
+  | 3 | password_reset_tokens | created_at | timestamp |  |  |  |  |
 
-#### `StoreTagRequest`
-- `name`: `required|string|max:50|unique:tags,name`
+  personal_access_tokensテーブル
+  | No. | テーブル名 | カラム名 | 型 | PRIMARY KEY | NOT NULL | FOREIGN KEY | 補足 |
+  | 1 | personal_access_tokens | id | bigint unsigned | :white_check_mark: | :white_check_mark: |  | database/migrations/2019_12_14_000001_create_personal_access_tokens_table.php:12 |
+  | 2 | personal_access_tokens | tokenable_type | varchar(255) |  | :white_check_mark: |  | 多態（Sanctum） |
+  | 3 | personal_access_tokens | tokenable_id | bigint unsigned |  | :white_check_mark: |  |  |
+  | 4 | personal_access_tokens | name | varchar(255) |  | :white_check_mark: |  |  |
+  | 5 | personal_access_tokens | token | varchar(64) unique |  | :white_check_mark: |  |  |
+  | 6 | personal_access_tokens | abilities | text |  |  |  | 任意 |
+  | 7 | personal_access_tokens | last_used_at | timestamp |  |  |  |  |
+  | 8 | personal_access_tokens | expires_at | timestamp |  |  |  |  |
+  | 9 | personal_access_tokens | created_at | timestamp |  |  |  |  |
+  | 10 | personal_access_tokens | updated_at | timestamp |  |  |  |  |
 
-#### `UpdateTagRequest`
-- `name`: `required|string|max:50|unique:tags,name,{$this->tag->id}` (自身のIDを除外してユニークチェック)
+  failed_jobsテーブル
+  | No. | テーブル名 | カラム名 | 型 | PRIMARY KEY | NOT NULL | FOREIGN KEY | 補足 |
+  | 1 | failed_jobs | id | bigint unsigned | :white_check_mark: | :white_check_mark: |  | database/migrations/2019_08_19_000000_create_failed_jobs_table.php:12 |
+  | 2 | failed_jobs | uuid | varchar(255) unique |  | :white_check_mark: |  |  |
+  | 3 | failed_jobs | connection | text |  | :white_check_mark: |  |  |
+  | 4 | failed_jobs | queue | text |  | :white_check_mark: |  |  |
+  | 5 | failed_jobs | payload | longtext |  | :white_check_mark: |  |  |
+  | 6 | failed_jobs | exception | longtext |  | :white_check_mark: |  |  |
+  | 7 | failed_jobs | failed_at | timestamp |  | :white_check_mark: |  | default current |
 
----
-## 8. コントローラーロジック詳細
-### `Api/ContactController@index`
-- `IndexContactRequest` でバリデーション済みのリクエストを取得する。
-- `Contact::with('category')` でクエリを開始する。
-- `keyword`, `gender`, `category_id`, `date` の各条件で `if ($request->filled(...))` を用いてクエリを動的に構築する。
-- `keyword` 検索は `first_name`, `last_name`, `email` を対象とした `orWhere` を使用する。
-- `latest()->paginate(7)` で結果を取得する。
-- `ContactResource::collection()` で結果をラップして返す。
+  categoriesテーブル
+  | No. | テーブル名 | カラム名 | 型 | PRIMARY KEY | NOT NULL | FOREIGN KEY | 補足 |
+  | 1 | categories | id | bigint unsigned | :white_check_mark: | :white_check_mark: |  | database/migrations/2026_02_10_040042_create_categories_table.php:14 |
+  | 2 | categories | content | varchar(255) |  | :white_check_mark: |  | 区分名 |
+  | 3 | categories | created_at | timestamp |  |  |  |  |
+  | 4 | categories | updated_at | timestamp |  |  |  |  |
 
-### `Api/ContactController@store`
-- `StoreContactRequest` でバリデーションを行う。
-- `DB::transaction()` を使用して、お問い合わせ登録とタグ紐付けをアトミックに行う。
-- `Contact::create()` でお問い合わせを保存する。
-- `if ($request->filled('tags'))` でタグの存在をチェックし、`$contact->tags()->attach($request->tags)` で紐付けを行う。
-- 成功後、`/thanks` へリダイレクトする。
+  contactsテーブル
+  | No. | テーブル名 | カラム名 | 型 | PRIMARY KEY | NOT NULL | FOREIGN KEY | 補足 |
+  | 1 | contacts | id | bigint unsigned | :white_check_mark: | :white_check_mark: |  | database/migrations/2026_02_10_040043_create_contacts_table.php:14 |
+  | 2 | contacts | category_id | bigint unsigned |  | :white_check_mark: | categories.id | cascade delete |
+  | 3 | contacts | first_name | varchar(255) |  | :white_check_mark: |  |  |
+  | 4 | contacts | last_name | varchar(255) |  | :white_check_mark: |  |  |
+  | 5 | contacts | gender | tinyint |  | :white_check_mark: |  | 1:男性,2:女性,3:その他 |
+  | 6 | contacts | email | varchar(255) |  | :white_check_mark: |  |  |
+  | 7 | contacts | tel | varchar(11) |  | :white_check_mark: |  | ハイフンなし10〜11桁 |
+  | 8 | contacts | address | varchar(255) |  | :white_check_mark: |  |  |
+  | 9 | contacts | building | varchar(255) |  |  |  | nullable |
+  | 10 | contacts | detail | varchar(120) |  | :white_check_mark: |  |  |
+  | 11 | contacts | created_at | timestamp |  |  |  |  |
+  | 12 | contacts | updated_at | timestamp |  |  |  |  |
 
-### `ContactController@export`
-- `ExportContactRequest` でバリデーションを行う。
-- `Api/ContactController@index` と同様のロジックで検索クエリを構築する。
-- `latest()->get()` で全件取得する。
-- `response()->streamDownload()` を使用してCSVをストリーム出力する。
-  - ファイル名のフォーマットは `contacts_YYYYMMDD_HHMMSS.csv` とする。
-  - `fwrite($handle, "\xEF\xBB\xBF");` でBOMを先頭に書き込む。
-  - `fputcsv()` で1行ずつデータを書き込む。性別は `match` 式で数値から文字列に変換する。
+  tagsテーブル
+  | No. | テーブル名 | カラム名 | 型 | PRIMARY KEY | NOT NULL | FOREIGN KEY | 補足 |
+  | 1 | tags | id | bigint unsigned | :white_check_mark: | :white_check_mark: |  | database/migrations/2026_02_10_042329_create_tags_table.php:14 |
+  | 2 | tags | name | varchar(50) unique |  | :white_check_mark: |  |  |
+  | 3 | tags | created_at | timestamp |  |  |  |  |
+  | 4 | tags | updated_at | timestamp |  |  |  |  |
 
----
-## 9. 認証・認可
-- **認証方式**: セッションベース認証（Laravel Fortifyを利用）。
-- **アクセス制御**: `/admin` と `/contacts/export` のルートに `auth` ミドルウェアを適用する。
-- **権限NG時の挙動**: `auth`ミドルウェアにより、未認証ユーザーはログインページ(`/login`)へリダイレクトされる。
+  contact_tagテーブル
+  | No. | テーブル名 | カラム名 | 型 | PRIMARY KEY | NOT NULL | FOREIGN KEY | 補足 |
+  | 1 | contact_tag | id | bigint unsigned | :white_check_mark: | :white_check_mark: |  | database/migrations/2026_02_10_042338_create_contact_tag_table.php:14 |
+  | 2 | contact_tag | contact_id | bigint unsigned |  | :white_check_mark: | contacts.id | cascade delete |
+  | 3 | contact_tag | tag_id | bigint unsigned |  | :white_check_mark: | tags.id | cascade delete |
+  | 4 | contact_tag | created_at | timestamp |  |  |  |  |
+  | 5 | contact_tag | updated_at | timestamp |  |  |  |  |
+  | 6 | contact_tag | (制約) | unique(contact_id, tag_id) |  |  |  | 重複付与防止（database/migrations/2026_02_10_042338_create_contact_tag_table.php:20） |
 
----
-## 10. 受け入れ条件
-- **主要なユーザーフロー**：
-  1. ユーザーがお問い合わせフォームから情報を入力し、送信すると、内容がDBに保存され、完了ページが表示される。
-  2. 管理者がログインし、管理画面でお問い合わせ一覧を閲覧・検索・削除できる。
-  3. 管理者が管理画面の検索条件に連動したCSVファイルをエクスポートできる。
-  4. 管理者がAPIを通じてタグのCRUD操作を行える。
-- **成功条件**：
-  - 上記フローがエラーなく完了し、DBの状態が期待通りに更新されていること。
-  - バリデーションが正しく機能し、不正なデータは登録されないこと。
-- **エラー条件**：
-  - 必須項目未入力でフォームを送信した場合、バリデーションエラーが返されること。
-  - 未ログイン状態で管理画面にアクセスしようとした場合、ログインページにリダイレクトされること。
-
-
+  failed_jobs/personal_access_tokens/password_reset_tokens（上記参照）
